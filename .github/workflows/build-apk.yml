@@ -1,4 +1,4 @@
-name: Build Unsigned APK
+name: Build Signed APK
 
 on:
   push:
@@ -30,12 +30,40 @@ jobs:
       - name: Build release APK (unsigned)
         run: gradle assembleRelease --stacktrace
 
-      - name: Upload APK artifact
+      - name: Generate keystore and sign APK
+        run: |
+          # Generate a self-signed keystore for sideloading
+          keytool -genkeypair \
+            -alias zenfleet \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -keystore keystore.jks \
+            -storepass zenfleet123 \
+            -keypass zenfleet123 \
+            -dname "CN=ZenFleet, OU=DLV, O=ZenFleet, L=Delhi, S=Delhi, C=IN" \
+            -noprompt
+
+          # Sign the APK
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner sign \
+            --ks keystore.jks \
+            --ks-pass pass:zenfleet123 \
+            --key-pass pass:zenfleet123 \
+            --ks-key-alias zenfleet \
+            --out app/build/outputs/apk/release/app-release-signed.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk
+
+          # Verify signature
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify \
+            --verbose \
+            app/build/outputs/apk/release/app-release-signed.apk
+
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: ZEN-DLV-Ticket-Resolver-unsigned
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          name: ZEN-DLV-Ticket-Resolver-signed
+          path: app/build/outputs/apk/release/app-release-signed.apk
           retention-days: 30
 
-      - name: Show APK size
+      - name: Show APK info
         run: ls -lh app/build/outputs/apk/release/
